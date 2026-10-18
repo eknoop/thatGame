@@ -1,0 +1,45 @@
+name: Unraid runner check
+
+on:
+  workflow_dispatch:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review, converted_to_draft]
+    paths: ['.github/workflows/unraid-runner.yml']
+  push:
+    branches: [master]
+    paths: ['.github/workflows/unraid-runner.yml']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: unraid-runner-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  runner:
+    name: Unraid runner
+    if: ${{ github.event_name != 'pull_request' || github.event.pull_request.draft == false }}
+    runs-on: ${{ (github.event_name != 'pull_request_target' && github.event_name != 'issue_comment' && github.event_name != 'pull_request_review' && (!github.event.pull_request.head.repo.full_name || github.event.pull_request.head.repo.full_name == github.repository)) && fromJSON('["self-hosted", "Linux", "X64", "roadie", "unraid"]') || fromJSON('["ubuntu-24.04"]') }}
+    timeout-minutes: 5
+    steps:
+      - name: Check runner and checkout
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+          sparse-checkout: .github
+      - name: Verify Unraid runner tools
+        shell: bash
+        env:
+          RUNNER_PLATFORM: ${{ runner.os }}
+          RUNNER_ARCHITECTURE: ${{ runner.arch }}
+          RUNNER_TYPE: ${{ runner.environment }}
+          EXPECTED_RUNNER_TYPE: ${{ (github.event_name != 'pull_request_target' && github.event_name != 'issue_comment' && github.event_name != 'pull_request_review' && (!github.event.pull_request.head.repo.full_name || github.event.pull_request.head.repo.full_name == github.repository)) && 'self-hosted' || 'github-hosted' }}
+        run: |
+          set -euo pipefail
+          test "$RUNNER_TYPE" = "$EXPECTED_RUNNER_TYPE"
+          test "$RUNNER_PLATFORM" = Linux
+          test "$RUNNER_ARCHITECTURE" = X64
+          git --version
+          bash --version | head -n 1
+          df -h .
